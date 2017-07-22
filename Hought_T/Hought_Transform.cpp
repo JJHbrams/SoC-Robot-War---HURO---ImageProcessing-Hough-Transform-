@@ -1,10 +1,10 @@
-/*
-Subject : SURF
+ï»¿/*
+Subject : Hough Transform
 Made by Mrjohd
 Date 2017.07.13
-
+Version 1.1.0
 */
-// µğ¹ö±ë È¯°æº¯¼ö PATH
+// ë””ë²„ê¹… í™˜ê²½ë³€ìˆ˜ PATH
 // PATH=C:\Users\MrJohd\Desktop\Temporary back up\ETC\opencv\build\x64\vc14\bin;%PATH%
 #ifdef _DEBUG 
 #pragma comment (lib, "opencv_world310d.lib") 
@@ -19,37 +19,36 @@ Date 2017.07.13
 #include <opencv2/highgui/highgui.hpp>
 #include <math.h>
 
-#define iwidth 390			// ´ë»óÀÌ¹ÌÁö ³Êºñ
-#define iheight 122			// ´ë»óÀÌ¹ÌÁö ³ôÀÌ
+#define iwidth 390			// Image Width
+#define iheight 122			// Image Height
 
 #define TRUE 1
 #define FALSE 0
 #define PI 3.14
 
-#define G_Threshold 159		// °¡¿ì½Ã¾È ÇÊÅÍ threshold
+#define G_Threshold 159		// Gaussian filter threshold
 #define Thres_High 110
 #define Thres_Low  60		
 #define Thres_Cut  30
 #define Offset_Maxima	60
 #define Non_Maxima		2
-#define STRONG_Edge 255		// °­ÇÑ¿¡Áö (Thres_Highº¸´Ù Å« ¿¡Áö)
-#define WEAK_Edge 127		// ¾àÇÑ¿¡Áö (Thres_Highº¸´Ü ÀÛÁö¸¸ Thre_Lowº¸´Ü Å« ¾Ö¸ÅÇÑ ¿¡Áö)
+#define STRONG_Edge 255		// Strong Edge (Edges, which is larger than 'Thres_High')
+#define WEAK_Edge 127		// Weak Edge (Edges, which is larger than 'Thres_Low' but smaller than 'Thres_High')
 
-#define Theta	360			// ½ÇÁ¦ Ç¥Çö¹üÀ§´Â 0~180µµÀÌ¸ç °£°İÀº 0.5µµ
-#define Rho_Max	817		// ÀÌ¹ÌÁö »çÀÌÁî¿¡ ¸Â´Â ´ë°¢¼± ±æÀÌ : 2* sqrt(iwidth*iwidth + iheight*iheight)
-#define Vote_Thres	100
-// ´©ÀûÄ¡ ÀÓ°è°ª (½ÇÁúÀûÀ¸·Î »ç¿ëÇÒ Á÷¼± ¼±º°)
+#define Theta	360			// Actual range : 0~180 degress, Gap is 0.5ë„
+#define Rho_Max	817			// Dâ€‹iagonal length of Given Image : 2* sqrt(iwidth*iwidth + iheight*iheight)
+#define Vote_Thres	100		// Voting Threshold 
 
 using namespace std;
 using namespace cv;
 
 
-// Àü¿ªº¯¼ö ¼±¾ğ
-unsigned int i; unsigned int j; unsigned int fi; unsigned int fj;	//¼ø¼­´ë·Î ÀüÃ¼ÀÌ¹ÌÁö ³Êºñindex | ³ôÀÌ index | ÇÑ ÇÈ¼¿´ç mask ³Êºñ index | ³ôÀÌ index
-int num;	// ³ëÀÌÁî °³¼ö
-Mat img_temp(iheight, iwidth, CV_8UC1);								//ÀÌ¹ÌÁö Ãâ·Â¿ë ÀÓ½Ãº¯¼ö
+// ì „ì—­ë³€ìˆ˜ ì„ ì–¸
+unsigned int i; unsigned int j; unsigned int fi; unsigned int fj;	//	width index | hieght index | mask width per pixel index | mask width per pixel index
+int num;	// Index for number of noise pixel
+Mat img_temp(iheight, iwidth, CV_8UC1);								//	Image printing Temporary Variable
 
-// Filtering Àü¿ªº¯¼ö
+// Filtering Global Variable
 // Gaussian
 int inimg_G[iheight + 4][iwidth + 4] = { 0 };
 int outimg_G[iheight + 4][iwidth + 4] = { 0 };
@@ -57,26 +56,26 @@ int outimg_G[iheight + 4][iwidth + 4] = { 0 };
 int inimg[iheight + 2][iwidth + 2] = { 0 };
 int outimg[iheight + 2][iwidth + 2] = { 0 };
 
-// EdgeDetecting Àü¿ªº¯¼ö
+// EdgeDetecting Global Variable
 int inimg_C[iheight + 2][iwidth + 2] = { 0 };
-// ±×·¡µğ¾ğÆ® ÀüÃ¼ Å©±â (¸ÇÇØÆ° °Å¸® »ç¿ë : G_mag = G_magX + G_magY)
+// Gradient value (Manhatton Length : G_mag = G_magX + G_magY)
 float G_mag[iheight + 2][iwidth + 2] = { 0 };
-// ±×·¡µğ¾ğÆ® °¢µµ (Angle = arctan(G_magY / G_magX))
+// Gradient angle (Angle = arctan(G_magY / G_magX))
 float Angle[iheight + 2][iwidth + 2] = { 0 };
-// Hysteresis Edge Tracking ¿ë ÀÓ½Ã º¯¼ö
+// Hysteresis Edge Tracking Temporary variable
 float Edge_temp[iheight][iwidth] = { 0 };
 
-// Hough º¯È¯ Àü¿ªº¯¼ö
+// Hough transform Global variable
 float LOT_sin[Theta] = { 0 };
 float LOT_cos[Theta] = { 0 };
 int hough_cnt[Rho_Max][Theta] = { 0 };
-Mat Hough_S(Rho_Max, Theta, CV_8UC1);								// Hough space Ãâ·Â¿ë ÀÓ½Ãº¯¼ö
+Mat Hough_S(Rho_Max, Theta, CV_8UC1);								// Hough space printing temporary variable
 int Hough_com[Rho_Max + 2][Theta + 2] = { 0 };
 
-// »ç¿ëÀÚ Á¤ÀÇ ÇÔ¼ö ¼±¾ğ
+// User defined functions
 void Salt_Pepper(Mat img)
 {
-	// Salt/Pepper Noise ¹ß»ı ÇÔ¼ö
+	// Salt/Pepper Noise ë°œìƒ í•¨ìˆ˜
 	for (num = 0; num < 635; num++)
 	{
 		i = rand() % iheight;
@@ -93,9 +92,9 @@ void Salt_Pepper(Mat img)
 
 void filter_median(Mat img)
 {
-	// Median filter ÇÔ¼ö
+	// Median filter í•¨ìˆ˜
 
-	// ¿©¹é¾øÀÌ ÇÊÅÍ¸µ (¿øº»¹Ù±ùÀº 0À¸·Î)
+	// ì—¬ë°±ì—†ì´ í•„í„°ë§ (ì›ë³¸ë°”ê¹¥ì€ 0ìœ¼ë¡œ)
 	for (i = 1; i < iheight + 1; i++)
 		for (j = 1; j < iwidth + 1; j++)
 			inimg[i][j] = img.at<uchar>(i - 1, j - 1);
@@ -140,14 +139,14 @@ void filter_median(Mat img)
 
 void filter_Gaussian(Mat img)
 {
-	// Gaussian filter ÇÔ¼ö
+	// Gaussian filter í•¨ìˆ˜
 	const int G_mask[5][5] = { { 2, 4, 5, 4, 2 }
 		,{ 4, 9, 12, 9, 4 }
 		,{ 5, 12, 15, 12, 5 }
 		,{ 4, 9, 12, 9, 4 }
 	,{ 2, 4, 5, 4, 2 } };
 
-	// ¿©¹é¾øÀÌ ÇÊÅÍ¸µ (¿øº»¹Ù±ùÀº 0À¸·Î)
+	// ì—¬ë°±ì—†ì´ í•„í„°ë§ (ì›ë³¸ë°”ê¹¥ì€ 0ìœ¼ë¡œ)
 	for (i = 2; i < iheight + 2; i++)
 		for (j = 2; j < iwidth + 2; j++)
 			inimg_G[i][j] = img.at<uchar>(i - 2, j - 2);
@@ -172,7 +171,7 @@ void filter_Gaussian(Mat img)
 
 void Canny_edge(Mat image)
 {
-	// 2. ¿¡Áö ±×·¡µğ¾ğÆ® ±¸ÇÏ±â[Å©±â,¹æÇâ]
+	// 2. ì—ì§€ ê·¸ë˜ë””ì–¸íŠ¸ êµ¬í•˜ê¸°[í¬ê¸°,ë°©í–¥]
 	// Sobel mask 	
 	const int S_maskX[3][3] = { { -1, 0, 1 }
 							   ,{ -2, 0, 2 }
@@ -185,13 +184,13 @@ void Canny_edge(Mat image)
 		for (j = 1; j < iwidth + 1; j++)
 			inimg_C[i][j] = image.at<uchar>(i - 1, j - 1);
 
-	// Sobel Mask Àû¿ë
+	// Sobel Mask ì ìš©
 	for (i = 1; i < iheight + 1; i++)
 	{
 		for (j = 1; j < iwidth + 1; j++)
 		{
-			float G_magX = 0;									// ±×·¡µğ¾ğÆ® Å©±â - Horizontal
-			float G_magY = 0;									// ±×·¡µğ¾ğÆ® Å©±â - Vertical
+			float G_magX = 0;									// ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸° - Horizontal
+			float G_magY = 0;									// ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸° - Vertical
 			for (fi = 0; fi< 3; fi++)
 			{
 				for (fj = 0; fj < 3; fj++)
@@ -201,7 +200,7 @@ void Canny_edge(Mat image)
 				}
 			}
 
-			Angle[i][j] = (180.0 / PI)*atan2((float)G_magY, (float)G_magX);				// ¹æÇâ¼ºÀ§ÇÑ °¢µµ°è»ê	
+			Angle[i][j] = (180.0 / PI)*atan2((float)G_magY, (float)G_magX);				// ë°©í–¥ì„±ìœ„í•œ ê°ë„ê³„ì‚°	
 
 			if (Angle[i][j] > 180)	Angle[i][j] = -179.909;
 			if (Angle[i][j] < 0)	Angle[i][j] = -Angle[i][j];
@@ -210,8 +209,8 @@ void Canny_edge(Mat image)
 			if (G_magX < 0)		G_magX = -G_magX;
 			if (G_magY < 0)		G_magY = -G_magY;
 
-			//G_mag[i][j] = sqrt(G_magX*G_magX + G_magY*G_magY);		// À¯Å¬¸®µğ¾È °Å¸® : ´õÁ¤È®, ´À¸²
-			G_mag[i][j] = G_magX + G_magY;								// ¸ÇÇØÆ° °Å¸® : ±Ù»ç°ª, ºü¸§
+			//G_mag[i][j] = sqrt(G_magX*G_magX + G_magY*G_magY);		// ìœ í´ë¦¬ë””ì•ˆ ê±°ë¦¬ : ë”ì •í™•, ëŠë¦¼
+			G_mag[i][j] = G_magX + G_magY;								// ë§¨í•´íŠ¼ ê±°ë¦¬ : ê·¼ì‚¬ê°’, ë¹ ë¦„
 
 		}
 	}
@@ -219,7 +218,7 @@ void Canny_edge(Mat image)
 	for (i = 1; i < iheight + 1; i++)
 		for (j = 1; j < iwidth + 1; j++)
 		{
-			// 4¹æÇâÀ¸·Î º¯È¯ (0µµ ¹æÇâ/ 45µµ ¹æÇâ/ 90µµ ¹æÇâ/ 135µµ ¹æÇâ)
+			// 4ë°©í–¥ìœ¼ë¡œ ë³€í™˜ (0ë„ ë°©í–¥/ 45ë„ ë°©í–¥/ 90ë„ ë°©í–¥/ 135ë„ ë°©í–¥)
 
 			if ((Angle[i][j] >= 0 && Angle[i][j] < 22.5) || (Angle[i][j] >= 157.5 && Angle[i][j] <= 180))
 				Angle[i][j] = 0;
@@ -235,7 +234,7 @@ void Canny_edge(Mat image)
 
 		}
 
-	// G_magÀÇ ÃÖ´ë ÃÖ¼Ò & µ¥ÀÌÅÍ ½ºÄÉÀÏ º¯È¯
+	// G_magì˜ ìµœëŒ€ ìµœì†Œ & ë°ì´í„° ìŠ¤ì¼€ì¼ ë³€í™˜
 	int min = 10e10;
 	int max = 10e-10;
 	for (i = 1; i < iheight + 1; i++)
@@ -254,20 +253,20 @@ void Canny_edge(Mat image)
 
 	imshow("Sobel", image);
 	/******************************** 3. Non-Maximum Surpression **************************************/
-	// Local Maximum ÀÌ¸é °ªÀ» À¯Áö
+	// Local Maximum ì´ë©´ ê°’ì„ ìœ ì§€
 	for (i = 1; i < iheight + 1; i++)
 		for (j = 1; j < iwidth  + 1; j++)
 		{
-			int Edge_dir = Angle[i][j];							// ÇöÀç ÇÈ¼¿¿¡¼­ÀÇ ±×·¡µğ¾ğÆ® ¹æÇâ
-			int Centre = G_mag[i][j];							// ÇöÀç ÇÈ¼¿ÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int UU = G_mag[i + 1][j];							// ÇöÀç ÇÈ¼¿±âÁØ À§ÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int DD = G_mag[i - 1][j];							// ÇöÀç ÇÈ¼¿±âÁØ ¾Æ·¡ÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int LL = G_mag[i][j - 1];							// ÇöÀç ÇÈ¼¿±âÁØ ¿ŞÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int RR = G_mag[i][j + 1];							// ÇöÀç ÇÈ¼¿±âÁØ ¿À¸¥ÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int UL = G_mag[i + 1][j - 1];						// ÇöÀç ÇÈ¼¿±âÁØ À§ ¿ŞÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int UR = G_mag[i + 1][j + 1];						// ÇöÀç ÇÈ¼¿±âÁØ À§ ¿À¸¥ÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int DL = G_mag[i - 1][j - 1];						// ÇöÀç ÇÈ¼¿±âÁØ ¾Æ·¡ ¿ŞÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int DR = G_mag[i - 1][j + 1];						// ÇöÀç ÇÈ¼¿±âÁØ ¾Æ·¡ ¿À¸¥ÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
+			int Edge_dir = Angle[i][j];							// í˜„ì¬ í”½ì…€ì—ì„œì˜ ê·¸ë˜ë””ì–¸íŠ¸ ë°©í–¥
+			int Centre = G_mag[i][j];							// í˜„ì¬ í”½ì…€ì˜ ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸°
+			int UU = G_mag[i + 1][j];							// í˜„ì¬ í”½ì…€ê¸°ì¤€ ìœ„ìª½ ë°©í–¥ì˜ ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸°
+			int DD = G_mag[i - 1][j];							// í˜„ì¬ í”½ì…€ê¸°ì¤€ ì•„ë˜ìª½ ë°©í–¥ì˜ ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸°
+			int LL = G_mag[i][j - 1];							// í˜„ì¬ í”½ì…€ê¸°ì¤€ ì™¼ìª½ ë°©í–¥ì˜ ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸°
+			int RR = G_mag[i][j + 1];							// í˜„ì¬ í”½ì…€ê¸°ì¤€ ì˜¤ë¥¸ìª½ ë°©í–¥ì˜ ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸°
+			int UL = G_mag[i + 1][j - 1];						// í˜„ì¬ í”½ì…€ê¸°ì¤€ ìœ„ ì™¼ìª½ ë°©í–¥ì˜ ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸°
+			int UR = G_mag[i + 1][j + 1];						// í˜„ì¬ í”½ì…€ê¸°ì¤€ ìœ„ ì˜¤ë¥¸ìª½ ë°©í–¥ì˜ ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸°
+			int DL = G_mag[i - 1][j - 1];						// í˜„ì¬ í”½ì…€ê¸°ì¤€ ì•„ë˜ ì™¼ìª½ ë°©í–¥ì˜ ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸°
+			int DR = G_mag[i - 1][j + 1];						// í˜„ì¬ í”½ì…€ê¸°ì¤€ ì•„ë˜ ì˜¤ë¥¸ìª½ ë°©í–¥ì˜ ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸°
 
 			if (Centre > Thres_Cut)
 			{
@@ -312,15 +311,15 @@ void Canny_edge(Mat image)
 	for (i = 1; i < iheight - 1; i++)
 		for (j = 1; j < iwidth - 1; j++)
 		{
-			int Centre = image.at<uchar>(i, j);							// ÇöÀç ÇÈ¼¿ÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int UU = image.at<uchar>(i + 1, j);							// ÇöÀç ÇÈ¼¿±âÁØ À§ÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int DD = image.at<uchar>(i - 1, j);							// ÇöÀç ÇÈ¼¿±âÁØ ¾Æ·¡ÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int LL = image.at<uchar>(i, j - 1);							// ÇöÀç ÇÈ¼¿±âÁØ ¿ŞÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int RR = image.at<uchar>(i, j + 1);							// ÇöÀç ÇÈ¼¿±âÁØ ¿À¸¥ÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int UL = image.at<uchar>(i + 1, j - 1);						// ÇöÀç ÇÈ¼¿±âÁØ À§ ¿ŞÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int UR = image.at<uchar>(i + 1, j + 1);						// ÇöÀç ÇÈ¼¿±âÁØ À§ ¿À¸¥ÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int DL = image.at<uchar>(i - 1, j - 1);						// ÇöÀç ÇÈ¼¿±âÁØ ¾Æ·¡ ¿ŞÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int DR = image.at<uchar>(i - 1, j + 1);						// ÇöÀç ÇÈ¼¿±âÁØ ¾Æ·¡ ¿À¸¥ÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
+			int Centre = image.at<uchar>(i, j);							// í˜„ì¬ í”½ì…€ì˜ ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸°
+			int UU = image.at<uchar>(i + 1, j);							// í˜„ì¬ í”½ì…€ê¸°ì¤€ ìœ„ìª½ ë°©í–¥ì˜ ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸°
+			int DD = image.at<uchar>(i - 1, j);							// í˜„ì¬ í”½ì…€ê¸°ì¤€ ì•„ë˜ìª½ ë°©í–¥ì˜ ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸°
+			int LL = image.at<uchar>(i, j - 1);							// í˜„ì¬ í”½ì…€ê¸°ì¤€ ì™¼ìª½ ë°©í–¥ì˜ ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸°
+			int RR = image.at<uchar>(i, j + 1);							// í˜„ì¬ í”½ì…€ê¸°ì¤€ ì˜¤ë¥¸ìª½ ë°©í–¥ì˜ ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸°
+			int UL = image.at<uchar>(i + 1, j - 1);						// í˜„ì¬ í”½ì…€ê¸°ì¤€ ìœ„ ì™¼ìª½ ë°©í–¥ì˜ ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸°
+			int UR = image.at<uchar>(i + 1, j + 1);						// í˜„ì¬ í”½ì…€ê¸°ì¤€ ìœ„ ì˜¤ë¥¸ìª½ ë°©í–¥ì˜ ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸°
+			int DL = image.at<uchar>(i - 1, j - 1);						// í˜„ì¬ í”½ì…€ê¸°ì¤€ ì•„ë˜ ì™¼ìª½ ë°©í–¥ì˜ ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸°
+			int DR = image.at<uchar>(i - 1, j + 1);						// í˜„ì¬ í”½ì…€ê¸°ì¤€ ì•„ë˜ ì˜¤ë¥¸ìª½ ë°©í–¥ì˜ ê·¸ë˜ë””ì–¸íŠ¸ í¬ê¸°
 
 			if (Centre == STRONG_Edge)
 			{
@@ -329,7 +328,7 @@ void Canny_edge(Mat image)
 					for (fj = 0; fj < 3; fj++)
 						if (image.at<uchar>(i - 1 + fi, j - 1 + fj) > 0)
 						{
-							// °­ÇÑ¿¡Áö ±ÙÃ³ÀÇ ¾àÇÑ¿¡ÁöµéÀ» °­ÇÑ¿¡Áö·Î È®Á¤ÁöÀ½À¸·Î¼­ ½ÇÁ¦·Î ¿¬°ü¼ºÀÌ ÀÖ´Â ¿¡Áö¸¸ Ç¥Çö
+							// ê°•í•œì—ì§€ ê·¼ì²˜ì˜ ì•½í•œì—ì§€ë“¤ì„ ê°•í•œì—ì§€ë¡œ í™•ì •ì§€ìŒìœ¼ë¡œì„œ ì‹¤ì œë¡œ ì—°ê´€ì„±ì´ ìˆëŠ” ì—ì§€ë§Œ í‘œí˜„
 							Edge_temp[i - 1 + fi][j - 1 + fj] = STRONG_Edge;
 							//image.at<uchar>(i - 1 + fi, j - 1 + fj) = STRONG_Edge;
 						}
@@ -338,12 +337,12 @@ void Canny_edge(Mat image)
 
 			if (Centre == WEAK_Edge)
 			{
-				// ÁÖÀ§ 8°³ÀÇ ÇÈ¼¿ Áß ÇÏ³ª¶óµµ STRONG_EdgeÀÌ¸é STRONG_Edge·Î º¯È­
+				// ì£¼ìœ„ 8ê°œì˜ í”½ì…€ ì¤‘ í•˜ë‚˜ë¼ë„ STRONG_Edgeì´ë©´ STRONG_Edgeë¡œ ë³€í™”
 				if (UU == STRONG_Edge || DD == STRONG_Edge || LL == STRONG_Edge || RR == STRONG_Edge || UR == STRONG_Edge || UL == STRONG_Edge || DR == STRONG_Edge || DL == STRONG_Edge)
 					Edge_temp[i][j] = STRONG_Edge;
 				//image.at<uchar>(i, j) = STRONG_Edge;
 
-				// ÁÖÀ§ 8°³ÀÇ ÇÈ¼¿ Áß STRONG_Edge°¡ ÇÏ³ªµµ Á¸ÀçÇÏÁö ¾ÊÀ¸¸é 0
+				// ì£¼ìœ„ 8ê°œì˜ í”½ì…€ ì¤‘ STRONG_Edgeê°€ í•˜ë‚˜ë„ ì¡´ì¬í•˜ì§€ ì•Šìœ¼ë©´ 0
 				if (UU != STRONG_Edge && DD != STRONG_Edge && LL != STRONG_Edge && RR != STRONG_Edge && UR != STRONG_Edge && UL != STRONG_Edge && DR != STRONG_Edge && DL != STRONG_Edge)
 					Edge_temp[i][j] = 0;
 				//image.at<uchar>(i, j) = 0;
@@ -362,7 +361,7 @@ void Canny_edge(Mat image)
 
 void LOT_angle()
 {
-	// °¢ °¢µµ¿¡ ´ëÇÑ Look Up Table (LOT)
+	//Look Up Table (LOT) for each degrees (0~180)
 	for (int ang = 0; ang < Theta; ang++)
 	{
 		LOT_sin[ang] = sin((PI / 360.0)*ang);
@@ -370,18 +369,18 @@ void LOT_angle()
 	}
 }
 
-void HoughT(Mat image, Mat tmp, int opt)		// ¿À¸®Áö³Î ÀÌ¹ÌÁö, ¼±ÇàÀÛ¾÷µÈ ÀÌ¹ÌÁö, ¿É¼Ç
+void HoughT(Mat image, Mat tmp, int opt)		// Original image, Deformed image, option
 {
-	// Ãâ·Â°ª ÃÊ±âÈ­		
+	// initiating 'Hough_S'		
 	for (i = 0; i < Rho_Max; i++)
 		for (j = 0; j < Theta; j++)
 			Hough_S.at<uchar>(i, j) = 0;
 
 
-	// Look Up Table Çü¼º
+	// Look Up Table 
 	LOT_angle();
 
-	// hough count ÃÊ±âÈ­
+	// initiating 'hough count'
 	for (i = 0; i < Rho_Max; i++)
 		for (j = 0; j < Theta; j++)
 			hough_cnt[i][j] = 0;
@@ -393,18 +392,18 @@ void HoughT(Mat image, Mat tmp, int opt)		// ¿À¸®Áö³Î ÀÌ¹ÌÁö, ¼±ÇàÀÛ¾÷µÈ ÀÌ¹ÌÁö,
 			{
 				for (int m = 0; m < Theta; m++)
 				{
-					int R = (int)(i*LOT_sin[m] + j*LOT_cos[m] + 0.5);		// 0.5 ´Â ¹İ¿Ã¸²¿ë
+					int R = (int)(i*LOT_sin[m] + j*LOT_cos[m] + 0.5);		// 0.5 ëŠ” ë°˜ì˜¬ë¦¼ìš©
 					//cout << R << "		"<< endl;
 					if (R >= -(Rho_Max / 2) && R <= Rho_Max / 2)
 					{
 						R += Rho_Max / 2;
-						// °ãÄ¡´Â ºÎºĞ ´©ÀûÇÏ´Â ºÎºĞ ¤·¤¸?¤·¤·¤¸~
+						// ê²¹ì¹˜ëŠ” ë¶€ë¶„ ëˆ„ì í•˜ëŠ” ë¶€ë¶„ ã…‡ã…ˆ?ã…‡ã…‡ã…ˆ~
 						hough_cnt[R][m]++;
-						// ÇãÇÁ°ø°£
+						// Hough Space
 						if (opt == TRUE)
 							Hough_S.at<uchar>(R, m)++;
 						else
-							Hough_S.at<uchar>(R, m) = 255;
+							Hough_S.at<uchar>(R, m) = 0;
 					}
 						
 				}
@@ -412,40 +411,59 @@ void HoughT(Mat image, Mat tmp, int opt)		// ¿À¸®Áö³Î ÀÌ¹ÌÁö, ¼±ÇàÀÛ¾÷µÈ ÀÌ¹ÌÁö,
 	imwrite("Hough_Space.jpg", Hough_S);
 	imshow("Hough Space", Hough_S);
 
-	// ¼±ÀÇ ÀÓ°è°ª¼³Á¤ & °³¼ö
+	// ì„ ì˜ ì„ê³„ê°’ì„¤ì • & ê°œìˆ˜
 	// Non-Maximum suppression
 	for (i = 1; i < Rho_Max + 1; i++)
 		for (j = 1; j < Theta + 1; j++)
 			Hough_com[i][j] = hough_cnt[i - 1][j - 1];
 
 	int t = 0;
+	int comp = 0;
+
 	for (i = 1; i < Rho_Max + 1; i++)
 		for (j = 1; j < Theta + 1; j++)
 		{
-			int Centre = Hough_com[i][j];							// ÇöÀç ÇÈ¼¿ÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int UU = Hough_com[i + 1][j];							// ÇöÀç ÇÈ¼¿±âÁØ À§ÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int DD = Hough_com[i - 1][j];							// ÇöÀç ÇÈ¼¿±âÁØ ¾Æ·¡ÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int LL = Hough_com[i][j - 1];							// ÇöÀç ÇÈ¼¿±âÁØ ¿ŞÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int RR = Hough_com[i][j + 1];							// ÇöÀç ÇÈ¼¿±âÁØ ¿À¸¥ÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int UL = Hough_com[i + 1][j - 1];						// ÇöÀç ÇÈ¼¿±âÁØ À§ ¿ŞÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int UR = Hough_com[i + 1][j + 1];						// ÇöÀç ÇÈ¼¿±âÁØ À§ ¿À¸¥ÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int DL = Hough_com[i - 1][j - 1];						// ÇöÀç ÇÈ¼¿±âÁØ ¾Æ·¡ ¿ŞÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â
-			int DR = Hough_com[i - 1][j + 1];						// ÇöÀç ÇÈ¼¿±âÁØ ¾Æ·¡ ¿À¸¥ÂÊ ¹æÇâÀÇ ±×·¡µğ¾ğÆ® Å©±â.
-
+			int Centre = Hough_com[i][j];							// Center pixel's hough_cnt
+			int cnt = 0;
 			if (Centre > Vote_Thres)
 			{
-				if (!(Centre > UU && Centre > DD && Centre > UR && Centre > DL && Centre > UL && Centre > DR && Centre > RR && Centre > LL))	
+				for (fi = 0; fi < 3; fi++)
+					for (fj = 0; fj < 3; fj++)
+					{
+						comp = Hough_com[i + fi - 1][j + fj - 1];
+						if (!(Centre > comp))
+							cnt += 1;
+					}
+				if (cnt > 1)
 					hough_cnt[i - 1][j - 1] = 0;
-				t++;
 			}
 
 			else
 				hough_cnt[i - 1][j - 1] = 0;
 		}
-	cout << "Number of Lines : " << t << endl;
 
-	// ¿øº» ÀÌ¹ÌÁö¿¡ ¼± Ç¥Çö
-	// Å×½ºÆ®¿ë ÀÓ½Ãº¯¼ö
+	// Express Lines, remain not suppressed
+	Mat Hough_S2(Rho_Max, Theta, CV_8UC1);
+	t = 0;
+	for (i = 0; i < Rho_Max; i++)
+		for (j = 0; j < Theta; j++)
+		{
+			if (hough_cnt[i][j] != 0)	t++;
+			Hough_S2.at<uchar>(i, j) = hough_cnt[i][j];
+		}
+			
+	cout << "Number of Lines : " << t << endl;
+	imshow("Hough Space2", Hough_S2);
+
+
+
+
+
+
+
+
+	// ì›ë³¸ ì´ë¯¸ì§€ì— ì„  í‘œí˜„
+	// Initiating Temporary Array 
 	Mat fuck(iheight, iwidth, CV_8UC1);
 	for (i = 0; i < iheight; i++)
 		for (j = 0; j < iwidth; j++)
@@ -458,9 +476,9 @@ void HoughT(Mat image, Mat tmp, int opt)		// ¿À¸®Áö³Î ÀÌ¹ÌÁö, ¼±ÇàÀÛ¾÷µÈ ÀÌ¹ÌÁö,
 		for (int m = 1; m < Theta; m++)
 			for (int n = 0; n < Rho_Max; n++)
 			{
-				if (hough_cnt[n][m] > Vote_Thres)
+				if (hough_cnt[n][m] != 0)
 				{
-					i = (unsigned int)((n - Rho_Max / 2 - j*LOT_cos[m]) / LOT_sin[m]);
+					i = (unsigned int)((n - (Rho_Max / 2) - j*LOT_cos[m]) / LOT_sin[m]);
 					if (i >= 0 && i < iheight)
 					{
 						image.at<uchar>(i, j) = 128;
@@ -478,9 +496,9 @@ void HoughT(Mat image, Mat tmp, int opt)		// ¿À¸®Áö³Î ÀÌ¹ÌÁö, ¼±ÇàÀÛ¾÷µÈ ÀÌ¹ÌÁö,
 		for (int m = 0; m < Theta; m++)
 			for (int n = 0; n < Rho_Max; n++)
 			{
-				if (hough_cnt[n][m] > Vote_Thres)
+				if (hough_cnt[n][m] != 0)
 				{
-					j = (unsigned int)((n - Rho_Max / 2 - i*LOT_sin[m]) / LOT_cos[m]);
+					j = (unsigned int)((n - (Rho_Max / 2) - i*LOT_sin[m]) / LOT_cos[m]);
 					if (j >= 0 && j < iwidth)
 					{
 						image.at<uchar>(i, j) = 128;
@@ -499,7 +517,7 @@ void HoughT(Mat image, Mat tmp, int opt)		// ¿À¸®Áö³Î ÀÌ¹ÌÁö, ¼±ÇàÀÛ¾÷µÈ ÀÌ¹ÌÁö,
 
 void main()
 {
-	// ¿øº» ÀÌ¹ÌÁö (Gray)
+	// Origianl image (Gray)
 	Mat image = imread("s2.jpg", 0);
 	imshow("Original Image", image);
 
@@ -511,15 +529,15 @@ void main()
 	//Salt_Pepper(img_temp);
 
 	/******************************** filtering **************************************/
-	//filter_median(img_temp);				// ¹Ìµğ¾È ÇÊÅÍ (¼Ò±İ/ÈÄÃß ³ëÀÌÁî°¡ ½ÉÇÒ¶§)
-	filter_Gaussian(img_temp);				// °¡¿ì½Ã¾È ÇÊÅÍ (°¡¿ì½Ã¾È ³ëÀÌÁî(¹é»ö³ëÀÌÁî) Á¦°Å)
+	//filter_median(img_temp);				// ë¯¸ë””ì•ˆ í•„í„° (ì†Œê¸ˆ/í›„ì¶” ë…¸ì´ì¦ˆê°€ ì‹¬í• ë•Œ)
+	filter_Gaussian(img_temp);				// ê°€ìš°ì‹œì•ˆ í•„í„° (ê°€ìš°ì‹œì•ˆ ë…¸ì´ì¦ˆ(ë°±ìƒ‰ë…¸ì´ì¦ˆ) ì œê±°)
 
 	/******************************** Edge detect **************************************/
 	Canny_edge(img_temp);					// Canny Edge
 
 	/******************************** Hough Transform **************************************/
 	
-	// Hough Å×½ºÆ® »ùÇÃ ÀÌ¹ÌÁö »ı¼º
+	// Hough í…ŒìŠ¤íŠ¸ ìƒ˜í”Œ ì´ë¯¸ì§€ ìƒì„±
 	Mat tmp(iheight, iwidth, CV_8UC1);
 	for (i = 0; i < iheight; i++)
 		for (j = 0; j < iwidth; j++)
@@ -538,10 +556,10 @@ void main()
 		
 
 	/**************************************************************************************/
-	// Ãâ·ÂÀúÀå
-	imwrite("TEST.jpg", img_temp);
+	// ì¶œë ¥ì €ì¥
+	imwrite("TEST.jpg", image);
 
 	cout << "Done!" << endl;
-	// 3000ms ´ë±â
+	// 3000ms ëŒ€ê¸°
 	waitKey(30000);
 }
