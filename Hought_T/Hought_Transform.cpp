@@ -2,7 +2,8 @@
 Subject : Hough Transform
 Made by Mrjohd
 Date 2017.07.13
-Version 1.1.0
+Version 1.1.1
+Version Update 2017.07.23
 */
 // 디버깅 환경변수 PATH
 // PATH=C:\Users\MrJohd\Desktop\Temporary back up\ETC\opencv\build\x64\vc14\bin;%PATH%
@@ -37,7 +38,7 @@ Version 1.1.0
 
 #define Theta	360			// Actual range : 0~180 degress, Gap is 0.5도
 #define Rho_Max	817			// D​iagonal length of Given Image : 2* sqrt(iwidth*iwidth + iheight*iheight)
-#define Vote_Thres	100		// Voting Threshold 
+#define Vote_Thres	101		// Voting Threshold 
 
 using namespace std;
 using namespace cv;
@@ -71,6 +72,7 @@ float LOT_cos[Theta] = { 0 };
 int hough_cnt[Rho_Max][Theta] = { 0 };
 Mat Hough_S(Rho_Max, Theta, CV_8UC1);								// Hough space printing temporary variable
 int Hough_com[Rho_Max + 2][Theta + 2] = { 0 };
+int Hough_com2[Rho_Max + 10][Theta + 10] = { 0 };
 
 // User defined functions
 void Salt_Pepper(Mat img)
@@ -369,6 +371,64 @@ void LOT_angle()
 	}
 }
 
+void Reducing(int expand_val)
+{
+	// for 3X3 space, expand_val is 0 (Default setting)
+	// expand_val			Space size
+	//	  0						3X3
+	//	  1						5X5
+	//	  2						7X7
+	//	  3						9X9
+	//	  4						11X11
+	//	  5						13X13
+	//	  '						  '
+	//	  '						  '
+	//	  '						  '
+	int Offset_A = 1 + expand_val;
+	int Space_size = 3 + expand_val * 2;
+	for (i = Offset_A; i < Rho_Max + Offset_A; i++)
+		for (j = Offset_A; j < Theta + Offset_A; j++)
+			Hough_com2[i][j] = hough_cnt[i - Offset_A][j - Offset_A];
+
+	int comp = 0;
+	for (i = 5; i < Rho_Max + 5; i++)
+		for (j = 5; j < Theta + 5; j++)
+		{
+			int Centre = Hough_com2[i][j];
+			int i_min = Rho_Max + Offset_A;
+			int i_max = 0;
+			int j_min = Rho_Max + Offset_A;
+			int j_max = 0;
+			if (Centre > 0)
+			{
+				int index_Rho = 0;
+				int index_Theta = 0;
+				for (fi = 0; fi < Space_size; fi++)
+					for (fj = 0; fj < Space_size; fj++)
+					{
+						int index_A = i + fi - Offset_A;
+						int index_B = j + fj - Offset_A;
+						comp = Hough_com2[index_A][index_B];
+
+						if (comp > 0)
+						{
+							if (index_A < i_min)	i_min = index_A;
+							if (index_A > i_max)	i_max = index_A;
+							if (index_B < j_min)	j_min = index_B;
+							if (index_B > j_max)	j_max = index_B;
+						}
+						Hough_com2[index_A][index_B] = 0;
+					}
+				index_Rho = (int)((i_min + i_max) / 2.0 + 0.5);
+				index_Theta = (int)((j_min + j_max) / 2.0 + 0.5);
+				Hough_com2[index_Rho][index_Theta] = Centre;
+			}
+		}
+	for (i = Offset_A; i < Rho_Max + Offset_A; i++)
+		for (j = Offset_A; j < Theta + Offset_A; j++)
+			hough_cnt[i - Offset_A][j - Offset_A] = Hough_com2[i][j];
+}
+
 void HoughT(Mat image, Mat tmp, int opt)		// Original image, Deformed image, option
 {
 	// initiating 'Hough_S'		
@@ -412,7 +472,7 @@ void HoughT(Mat image, Mat tmp, int opt)		// Original image, Deformed image, opt
 	imshow("Hough Space", Hough_S);
 
 	// 선의 임계값설정 & 개수
-	// Non-Maximum suppression
+	
 	for (i = 1; i < Rho_Max + 1; i++)
 		for (j = 1; j < Theta + 1; j++)
 			Hough_com[i][j] = hough_cnt[i - 1][j - 1];
@@ -420,6 +480,7 @@ void HoughT(Mat image, Mat tmp, int opt)		// Original image, Deformed image, opt
 	int t = 0;
 	int comp = 0;
 
+	// Non-Maximum suppression
 	for (i = 1; i < Rho_Max + 1; i++)
 		for (j = 1; j < Theta + 1; j++)
 		{
@@ -455,14 +516,23 @@ void HoughT(Mat image, Mat tmp, int opt)		// Original image, Deformed image, opt
 	cout << "Number of Lines : " << t << endl;
 	imshow("Hough Space2", Hough_S2);
 
+	// Reduce overlapping lines
+	Reducing(6);
 
+	// Express Lines, remain not Reduced
+	Mat Hough_S3(Rho_Max, Theta, CV_8UC1);
+	t = 0;
+	for (i = 0; i < Rho_Max; i++)
+		for (j = 0; j < Theta; j++)
+		{
+			if (hough_cnt[i][j] > 0)	t++;
+			Hough_S3.at<uchar>(i, j) = hough_cnt[i][j];
+		}
 
+	cout << "Number of Lines, Reduced : " << t << endl;
+	imshow("Hough Space3", Hough_S3);
 
-
-
-
-
-	// 원본 이미지에 선 표현
+	// Express Assumed Lines on Original image
 	// Initiating Temporary Array 
 	Mat fuck(iheight, iwidth, CV_8UC1);
 	for (i = 0; i < iheight; i++)
