@@ -2,7 +2,9 @@
 Subject : Hough Transform
 Made by Mrjohd
 Date 2017.07.13
-Version 1.1.2
+Version 1.2.0
+// build 1 : line hough transform
+// build 2 : Circle hough transform
 Version Update 2017.07.23
 */
 // 디버깅 환경변수 PATH
@@ -20,25 +22,25 @@ Version Update 2017.07.23
 #include <opencv2/highgui/highgui.hpp>
 #include <math.h>
 
-#define iwidth 390			// Image Width
-#define iheight 122			// Image Height
+#define iwidth 186			// Image Width
+#define iheight 190			// Image Height
 
 #define TRUE 1
 #define FALSE 0
 #define PI 3.14
 
 #define G_Threshold 159		// Gaussian filter threshold
-#define Thres_High 110
-#define Thres_Low  60		
+#define Thres_High 70
+#define Thres_Low  50		
 #define Thres_Cut  30
 #define Offset_Maxima	60
-#define Non_Maxima		2
+#define Non_Maxima		15
 #define STRONG_Edge 255		// Strong Edge (Edges, which is larger than 'Thres_High')
 #define WEAK_Edge 127		// Weak Edge (Edges, which is larger than 'Thres_Low' but smaller than 'Thres_High')
 
 #define Theta	360			// Actual range : 0~180 degress, Gap is 0.5도
-#define Rho_Max	817			// D​iagonal length of Given Image : 2* sqrt(iwidth*iwidth + iheight*iheight)
-#define Vote_Thres	101		// Voting Threshold 
+#define Rho_Max	532			// D​iagonal length of Given Image : 2* sqrt(iwidth*iwidth + iheight*iheight)
+#define Vote_Thres	70		// Voting Threshold (Hough 공간상에서 가장 큰 값을 기준으로 자동으로 결정하게 해야될것으로 보임)
 
 using namespace std;
 using namespace cv;
@@ -276,16 +278,16 @@ void Canny_edge(Mat image)
 				{
 				case 0:
 					if (((LL <= Centre) && (RR <= Centre)))			image.at<uchar>(i - 1, j - 1) += Offset_Maxima;
-					if (!((LL <= Centre) && (RR <= Centre)))		image.at<uchar>(i - 1, j - 1) += Non_Maxima;
+					if (!((LL <= Centre) && (RR <= Centre)))		image.at<uchar>(i - 1, j - 1) = Non_Maxima;
 				case 45:
 					if (((UR <= Centre) && (DL <= Centre)))			image.at<uchar>(i - 1, j - 1) += Offset_Maxima;
-					if (!((UR <= Centre) && (DL <= Centre)))		image.at<uchar>(i - 1, j - 1) += Non_Maxima;
+					if (!((UR <= Centre) && (DL <= Centre)))		image.at<uchar>(i - 1, j - 1) = Non_Maxima;
 				case 90:
 					if (((UU <= Centre) && (DD <= Centre)))			image.at<uchar>(i - 1, j - 1) += Offset_Maxima;
-					if (!((UU <= Centre) && (DD <= Centre)))		image.at<uchar>(i - 1, j - 1) += Non_Maxima;
+					if (!((UU <= Centre) && (DD <= Centre)))		image.at<uchar>(i - 1, j - 1) = Non_Maxima;
 				case 135:
 					if (((UL <= Centre) && (DR <= Centre)))			image.at<uchar>(i - 1, j - 1) += Offset_Maxima;
-					if (!((UL <= Centre) && (DR <= Centre)))		image.at<uchar>(i - 1, j - 1) += Non_Maxima;
+					if (!((UL <= Centre) && (DR <= Centre)))		image.at<uchar>(i - 1, j - 1) = Non_Maxima;
 				}
 			}
 			else
@@ -399,6 +401,7 @@ void Reducing(int expand_val)
 			int i_max = 0;
 			int j_min = Rho_Max + Offset_A;
 			int j_max = 0;
+			int val_max = 0;
 			if (Centre > 0)
 			{
 				int index_Rho = 0;
@@ -417,11 +420,12 @@ void Reducing(int expand_val)
 							if (index_B < j_min)	j_min = index_B;
 							if (index_B > j_max)	j_max = index_B;
 						}
+						if (comp > val_max)	val_max = comp;
 						Hough_com2[index_A][index_B] = 0;
 					}
 				index_Rho = (int)((i_min + i_max) / 2.0 + 0.5);
 				index_Theta = (int)((j_min + j_max) / 2.0 + 0.5);
-				Hough_com2[index_Rho][index_Theta] = Centre;
+				Hough_com2[index_Rho][index_Theta] = val_max;
 			}
 		}
 	for (i = Offset_A; i < Rho_Max + Offset_A; i++)
@@ -448,7 +452,7 @@ void HoughT(Mat image, Mat tmp, int opt)		// Original image, Deformed image, opt
 	// hough count 
 	for (i = 0; i < iheight; i++)
 		for (j = 0; j < iwidth; j++)
-			if (tmp.at<uchar>(i, j) != 0)
+			if (tmp.at<uchar>(i, j) > 0)
 			{
 				for (int m = 0; m < Theta; m++)
 				{
@@ -522,9 +526,10 @@ void HoughT(Mat image, Mat tmp, int opt)		// Original image, Deformed image, opt
 			
 	cout << "Number of Lines : " << t << endl;
 	imshow("Hough Space2", Hough_S2);
+	
 
 	// Reduce overlapping lines
-	Reducing(6);
+	Reducing(8);
 
 	// Express Lines, remain not Reduced
 	Mat Hough_S3(Rho_Max, Theta, CV_8UC1);
@@ -595,7 +600,7 @@ void HoughT(Mat image, Mat tmp, int opt)		// Original image, Deformed image, opt
 void main()
 {
 	// Origianl image (Gray)
-	Mat image = imread("s2.jpg", 0);
+	Mat image = imread("coin.jpg", 0);
 	imshow("Original Image", image);
 
 	for (i = 0; i < iheight; i++)
