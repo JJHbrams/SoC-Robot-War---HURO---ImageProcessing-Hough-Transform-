@@ -2,7 +2,7 @@
 Subject : Hough Transform
 Made by Mrjohd
 Date 2017.07.13
-Version 1.1.1
+Version 1.1.2
 Version Update 2017.07.23
 */
 // 디버깅 환경변수 PATH
@@ -468,6 +468,13 @@ void HoughT(Mat image, Mat tmp, int opt)		// Original image, Deformed image, opt
 						
 				}
 			}
+	for (int m = 0; m < Theta; m++)
+	{
+		hough_cnt[Rho_Max / 2][m] = (int)(hough_cnt[Rho_Max / 2][m] / 2.0 + 0.5);
+		if (opt == TRUE)
+			Hough_S.at<uchar>(Rho_Max / 2, m) = (int)(Hough_S.at<uchar>(Rho_Max / 2, m) / 2.0 + 0.5);
+	}
+
 	imwrite("Hough_Space.jpg", Hough_S);
 	imshow("Hough Space", Hough_S);
 
