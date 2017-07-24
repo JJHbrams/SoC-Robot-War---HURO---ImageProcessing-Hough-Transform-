@@ -1,0 +1,26 @@
+for (k = r_min; k < r_max; k++)
+	{
+		for (i = 0; i < iheight; i++)
+			for (j = 0; j < iwidth; j++)
+				if (tmp.at<uchar>(i, j) > 0)
+				{
+					for (int m = 0; m < Theta; m++)
+					{
+						int x0 = (int)(j - k*LUT_cosC[m] + r_max + 0.5);
+						int y0 = (int)(i - k*LUT_sinC[m] + r_max + 0.5);
+						if ((x0 >= 5 && x0 <= x_max) && (y0 >= 5 && y0 <= y_max))
+						{
+							// 겹치는 부분 누적하는 부분 ㅇㅈ?ㅇㅇㅈ~
+							hough_cntC[y0][x0][k]++;
+							// Hough Space
+							
+							if (opt == TRUE)
+							Hough_C.at<uchar>(y0, x0)++;
+							else
+							Hough_C.at<uchar>(y0, x0) = 255;
+							
+						}
+
+					}
+				}
+	}
