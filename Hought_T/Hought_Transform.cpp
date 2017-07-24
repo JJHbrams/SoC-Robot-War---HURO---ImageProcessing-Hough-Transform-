@@ -40,7 +40,15 @@ Version Update 2017.07.23
 
 #define Theta	360			// Actual range : 0~180 degress, Gap is 0.5도
 #define Rho_Max	532			// D​iagonal length of Given Image : 2* sqrt(iwidth*iwidth + iheight*iheight)
+
+#define GAP	2
+#define r_min	5
+#define r_max	50			// 최대 반지름
+#define x_max	iwidth + 2*r_max
+#define y_max	iheight + 2*r_max
+
 #define Vote_Thres	70		// Voting Threshold (Hough 공간상에서 가장 큰 값을 기준으로 자동으로 결정하게 해야될것으로 보임)
+
 
 using namespace std;
 using namespace cv;
@@ -48,6 +56,7 @@ using namespace cv;
 
 // 전역변수 선언
 unsigned int i; unsigned int j; unsigned int fi; unsigned int fj;	//	width index | hieght index | mask width per pixel index | mask width per pixel index
+unsigned int k = 0;
 int num;	// Index for number of noise pixel
 Mat img_temp(iheight, iwidth, CV_8UC1);								//	Image printing Temporary Variable
 
@@ -69,10 +78,17 @@ float Angle[iheight + 2][iwidth + 2] = { 0 };
 float Edge_temp[iheight][iwidth] = { 0 };
 
 // Hough transform Global variable
-float LOT_sin[Theta] = { 0 };
-float LOT_cos[Theta] = { 0 };
+float LUT_sin[Theta] = { 0 };
+float LUT_cos[Theta] = { 0 };
+float LUT_x[iwidth][x_max] = { 0 };
+float LUT_y[iheight][y_max] = { 0 };
+
 int hough_cnt[Rho_Max][Theta] = { 0 };
-Mat Hough_S(Rho_Max, Theta, CV_8UC1);								// Hough space printing temporary variable
+int hough_cntC[y_max][x_max][r_max] = { 0 };
+
+Mat Hough_S(Rho_Max, Theta, CV_8UC1);								// Hough space printing temporary variable (Line)
+//Mat Hough_C(iheight, iwidth, CV_8UC1);									// Hough space printing temporary variable (Circle)
+Mat Hough_C(y_max, x_max, CV_8UC1);
 int Hough_com[Rho_Max + 2][Theta + 2] = { 0 };
 int Hough_com2[Rho_Max + 10][Theta + 10] = { 0 };
 
@@ -363,14 +379,26 @@ void Canny_edge(Mat image)
 	/**************************************************************************************************************************************************/
 }
 
-void LOT_angle()
+void LUT_angle()
 {
 	//Look Up Table (LOT) for each degrees (0~180)
 	for (int ang = 0; ang < Theta; ang++)
 	{
-		LOT_sin[ang] = sin((PI / 360.0)*ang);
-		LOT_cos[ang] = cos((PI / 360.0)*ang);
+		LUT_sin[ang] = sin((PI / 360.0)*ang);
+		LUT_cos[ang] = cos((PI / 360.0)*ang);
 	}
+}
+
+void LUT_circle()
+{
+	for (i = 0; i < iheight; i++)
+		for (j = 0; j < iwidth; j++)
+			for (fi = 0; fi < y_max; fi += GAP)
+				for (fj = 0; fj < x_max; fj+= GAP)
+				{
+					LUT_y[i][fi] = (i - fi + r_max)*(i - fi + r_max);
+					LUT_x[j][fj] = (j - fj + r_max)*(j - fj + r_max);
+				}
 }
 
 void Reducing(int expand_val)
@@ -435,28 +463,39 @@ void Reducing(int expand_val)
 
 void HoughT(Mat image, Mat tmp, int opt)		// Original image, Deformed image, option
 {
-	// initiating 'Hough_S'		
+	// initiating Hough Space		
 	for (i = 0; i < Rho_Max; i++)
 		for (j = 0; j < Theta; j++)
 			Hough_S.at<uchar>(i, j) = 0;
 
+	for (i = 0; i < y_max; i++)
+		for (j = 0; j < x_max; j++)
+			Hough_C.at<uchar>(i, j) = 0;
+
 
 	// Look Up Table 
-	LOT_angle();
+	LUT_angle();
+	LUT_circle();
 
 	// initiating 'hough count'
 	for (i = 0; i < Rho_Max; i++)
 		for (j = 0; j < Theta; j++)
 			hough_cnt[i][j] = 0;
 
+	for (i = 0; i < y_max; i++)
+		for (j = 0; j < x_max; j++)
+			for (k = r_min; k < r_max; k++)
+				hough_cntC[i][j][k] = 0;
+
 	// hough count 
+	// -> Line
 	for (i = 0; i < iheight; i++)
 		for (j = 0; j < iwidth; j++)
 			if (tmp.at<uchar>(i, j) > 0)
 			{
 				for (int m = 0; m < Theta; m++)
 				{
-					int R = (int)(i*LOT_sin[m] + j*LOT_cos[m] + 0.5);		// 0.5 는 반올림용
+					int R = (int)(i*LUT_sin[m] + j*LUT_cos[m] + 0.5);		// 0.5 는 반올림용
 					//cout << R << "		"<< endl;
 					if (R >= -(Rho_Max / 2) && R <= Rho_Max / 2)
 					{
@@ -478,9 +517,61 @@ void HoughT(Mat image, Mat tmp, int opt)		// Original image, Deformed image, opt
 		if (opt == TRUE)
 			Hough_S.at<uchar>(Rho_Max / 2, m) = (int)(Hough_S.at<uchar>(Rho_Max / 2, m) / 2.0 + 0.5);
 	}
-
+	
+	// -> Circle
+	for (i = 0; i < iheight; i++)
+		for (j = 0; j < iwidth; j++)
+			if (tmp.at<uchar>(i, j) > 0)
+			{
+				for (fi = 0; fi < y_max; fi+= GAP)
+					for (fj = 0; fj < x_max; fj+= GAP)
+					{
+						float Radius = sqrt(LUT_x[j][fj] + LUT_y[i][fi]);
+						if (Radius >= r_min && Radius <= r_max)
+						{
+							// 겹치는 부분 누적하는 부분 ㅇㅈ?ㅇㅇㅈ~
+							hough_cntC[fi][fj][(int)(Radius + 0.5)]++;
+							// Hough Space
+							if (opt == TRUE)
+								Hough_C.at<uchar>(fi, fj)++;
+							else
+								Hough_C.at<uchar>(fi, fj) = 0;
+							//cout << (int)(Radius + 0.5) << "		" << endl;
+						}
+							
+					}
+			}
+	
 	imwrite("Hough_Space.jpg", Hough_S);
+	imwrite("Hough_Circle.jpg", Hough_C);
+
 	imshow("Hough Space", Hough_S);
+	imshow("Hough Circle", Hough_C);
+
+	// 지배적인 반지름의 크기
+	int radius[r_max] = { 0 };
+	int radius_max = 0;
+	int radius_max_index = 0;
+
+	for (i = 0; i < y_max; i++)
+		for (j = 0; j < x_max; j++)
+			for (k = r_min; k < r_max; k++)
+			{
+				if (hough_cntC[i][j][k] > 30)
+					radius[k]++;
+			}
+
+	for (k = r_min; k < r_max; k++)
+		if (radius[k] > radius_max)
+		{
+			radius_max = radius[k];
+			radius_max_index = k;
+		}
+
+	cout << "Main radius : " << radius_max_index << "		" << endl;
+
+				
+	
 
 	// 선의 임계값설정 & 개수
 	
@@ -560,7 +651,7 @@ void HoughT(Mat image, Mat tmp, int opt)		// Original image, Deformed image, opt
 			{
 				if (hough_cnt[n][m] != 0)
 				{
-					i = (unsigned int)((n - (Rho_Max / 2) - j*LOT_cos[m]) / LOT_sin[m]);
+					i = (unsigned int)((n - (Rho_Max / 2) - j*LUT_cos[m]) / LUT_sin[m]);
 					if (i >= 0 && i < iheight)
 					{
 						image.at<uchar>(i, j) = 128;
@@ -580,7 +671,7 @@ void HoughT(Mat image, Mat tmp, int opt)		// Original image, Deformed image, opt
 			{
 				if (hough_cnt[n][m] != 0)
 				{
-					j = (unsigned int)((n - (Rho_Max / 2) - i*LOT_sin[m]) / LOT_cos[m]);
+					j = (unsigned int)((n - (Rho_Max / 2) - i*LUT_sin[m]) / LUT_cos[m]);
 					if (j >= 0 && j < iwidth)
 					{
 						image.at<uchar>(i, j) = 128;
@@ -643,5 +734,5 @@ void main()
 
 	cout << "Done!" << endl;
 	// 3000ms 대기
-	waitKey(30000);
+	waitKey(3000);
 }
