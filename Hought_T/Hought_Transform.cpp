@@ -2,10 +2,10 @@
 Subject : Hough Transform
 Made by Mrjohd
 Date 2017.07.13
-Version 1.2.1
+Version 1.3.0
 // build 1 : line hough transform
 // build 2 : Circle hough transform
-Version Update 2017.07.24
+Version Update 2017.07.26
 */
 // 디버깅 환경변수 PATH
 // PATH=C:\Users\MrJohd\Desktop\Temporary back up\ETC\opencv\build\x64\vc14\bin;%PATH%
@@ -22,8 +22,8 @@ Version Update 2017.07.24
 #include <opencv2/highgui/highgui.hpp>
 #include <math.h>
 
-#define iwidth 186			// Image Width
-#define iheight 190			// Image Height
+#define iwidth 354			// Image Width
+#define iheight 193			// Image Height
 
 #define TRUE 1
 #define FALSE 0
@@ -39,7 +39,7 @@ Version Update 2017.07.24
 #define WEAK_Edge 127		// Weak Edge (Edges, which is larger than 'Thres_Low' but smaller than 'Thres_High')
 
 #define Theta	360			// Actual range : 0~180 degress, Gap is 0.5도
-#define Rho_Max	532			// D​iagonal length of Given Image : 2* sqrt(iwidth*iwidth + iheight*iheight)
+#define Rho_Max	806			// D​iagonal length of Given Image : 2* sqrt(iwidth*iwidth + iheight*iheight)
 
 #define GAP	3
 #define r_min	5
@@ -48,6 +48,7 @@ Version Update 2017.07.24
 #define y_max	iheight + 2*r_max
 
 #define Vote_Thres	70		// Voting Threshold (Hough 공간상에서 가장 큰 값을 기준으로 자동으로 결정하게 해야될것으로 보임)
+#define Vote_Thres_C	40
 
 
 using namespace std;
@@ -85,8 +86,14 @@ float LUT_cosC[Theta] = { 0 };
 float LUT_x[iwidth][x_max] = { 0 };
 float LUT_y[iheight][y_max] = { 0 };
 
+Mat image_C(iheight, iwidth, CV_8UC1);
 int hough_cnt[Rho_Max][Theta] = { 0 };
 int hough_cntC[y_max][x_max][r_max] = { 0 };
+int number_of_C = 0;
+int Detected_Radius[2] = { 0 };
+int Detected_Center[2][2] = { 0 };
+int center_X = 0;
+int center_Y = 0;
 
 Mat Hough_S(Rho_Max, Theta, CV_8UC1);								// Hough space printing temporary variable (Line)
 Mat Hough_C(y_max, x_max, CV_8UC1);
@@ -94,6 +101,7 @@ int Hough_com[Rho_Max + 2][Theta + 2] = { 0 };
 int Hough_com2[Rho_Max + 50][Theta + 50] = { 0 };
 
 int Hough_comC[y_max + 2][x_max + 2] = { 0 };
+int Hough_com2C[y_max + 50][x_max + 50] = { 0 };
 
 // User defined functions
 void Salt_Pepper(Mat img)
@@ -434,8 +442,8 @@ void Reducing(int expand_val)
 			Hough_com2[i][j] = hough_cnt[i - Offset_A][j - Offset_A];
 
 	int comp = 0;
-	for (i = 5; i < Rho_Max + 5; i++)
-		for (j = 5; j < Theta + 5; j++)
+	for (i = Offset_A; i < Rho_Max + Offset_A; i++)
+		for (j = Offset_A; j < Theta + Offset_A; j++)
 		{
 			int Centre = Hough_com2[i][j];
 			int i_min = Rho_Max + Offset_A;
@@ -474,18 +482,207 @@ void Reducing(int expand_val)
 			hough_cnt[i - Offset_A][j - Offset_A] = Hough_com2[i][j];
 }
 
+void Reducing_C(int expand_val)
+{
+	// for 3X3 space, expand_val is 0 (Default setting)
+	// expand_val			Space size
+	//	  0						3X3
+	//	  1						5X5
+	//	  2						7X7
+	//	  3						9X9
+	//	  4						11X11
+	//	  5						13X13
+	//	  '						  '
+	//	  '						  '
+	//	  '						  '
+	int Offset_A = 1 + expand_val;
+	int Space_size = 3 + expand_val * 2;
+	for (i = Offset_A; i < y_max + Offset_A; i++)
+		for (j = Offset_A; j < x_max + Offset_A; j++)
+			Hough_com2C[i][j] = Hough_C.at<uchar>(i - Offset_A, j - Offset_A);
+
+	int comp = 0;
+	for (i = Offset_A; i < y_max + Offset_A; i++)
+		for (j = Offset_A; j < x_max + Offset_A; j++)
+		{
+			int Centre = Hough_com2C[i][j];
+			int i_min = y_max + Offset_A;
+			int i_max = 0;
+			int j_min = x_max + Offset_A;
+			int j_max = 0;
+			int val_max = 0;
+			if (Centre > 0)
+			{
+				int index_y = 0;
+				int index_x = 0;
+				for (fi = 0; fi < Space_size; fi++)
+					for (fj = 0; fj < Space_size; fj++)
+					{
+						int index_A = i + fi - Offset_A;
+						int index_B = j + fj - Offset_A;
+						comp = Hough_com2C[index_A][index_B];
+
+						if (comp > 0)
+						{
+							if (index_A < i_min)	i_min = index_A;
+							if (index_A > i_max)	i_max = index_A;
+							if (index_B < j_min)	j_min = index_B;
+							if (index_B > j_max)	j_max = index_B;
+						}
+						if (comp > val_max)	val_max = comp;
+						Hough_com2C[index_A][index_B] = 0;
+					}
+				index_y = (int)((i_min + i_max) / 2.0 + 0.5);
+				index_x = (int)((j_min + j_max) / 2.0 + 0.5);
+				Hough_com2C[index_y][index_x] = val_max;
+			}
+		}
+	for (i = Offset_A; i < y_max + Offset_A; i++)
+		for (j = Offset_A; j < x_max + Offset_A; j++)
+			Hough_C.at<uchar>(i - Offset_A, j - Offset_A) = Hough_com2C[i][j];
+}
+
+int find_circle(int r_start, int opt, Mat tmp)
+{	
+	for (i = 0; i < y_max; i++)
+		for (j = 0; j < x_max; j++)
+			Hough_C.at<uchar>(i, j) = 0;
+
+	if (r_start > r_max)	return 0;
+
+	for (k = r_start; k < r_start + GAP; k++)
+		for (i = 0; i < iheight; i++)
+			for (j = 0; j < iwidth; j++)
+				if (tmp.at<uchar>(i, j) > 0)
+					for (int m = 0; m < Theta; m++)
+					{
+						int x0 = (int)(j - k*LUT_cosC[m] + (r_max)+0.5);
+						int y0 = (int)(i - k*LUT_sinC[m] + (r_max)+0.5);
+						if ((x0 >= 5 && x0 <= x_max) && (y0 >= 5 && y0 <= y_max))
+						{
+							// 겹치는 부분 누적하는 부분 ㅇㅈ?ㅇㅇㅈ~
+							hough_cntC[y0][x0][k]++;
+							// Hough Space
+							if (opt == TRUE)
+								Hough_C.at<uchar>(y0, x0)++;
+							else
+								Hough_C.at<uchar>(y0, x0) = 255;
+						}
+					}
+	imwrite("Hough Circle.jpg", Hough_C);
+	imshow("Hough Circle", Hough_C);
+
+	// Non-maximum suppression
+	for (i = 1; i < y_max + 1; i++)
+		for (j = 1; j < x_max + 1; j++)
+			Hough_comC[i][j] = Hough_C.at<uchar>(i - 1, j - 1);
+
+	int comp = 0;
+	int maxima = 0;
+
+	for (i = 1; i < y_max + 1; i++)
+		for (j = 1; j < x_max + 1; j++)
+		{
+			int Centre = Hough_comC[i][j];			// Center pixel's hough_cnt
+			int cnt = 0;
+			if (Centre > Vote_Thres_C)
+			{
+				for (fi = 0; fi < 3; fi++)
+					for (fj = 0; fj < 3; fj++)
+					{
+						comp = Hough_comC[i + fi - 1][j + fj - 1];
+						if (!(Centre > comp))
+							cnt += 1;
+					}
+				if (cnt > 1)
+					Hough_C.at<uchar>(i - 1, j - 1) = 0;
+			}
+
+			else
+				Hough_C.at<uchar>(i - 1, j - 1) = 0;
+
+			if (Hough_C.at<uchar>(i - 1, j - 1) > maxima)
+				maxima = Hough_C.at<uchar>(i - 1, j - 1);
+		}
+	cout << "Maxima : " << maxima << endl;
+
+	int i_max = 0;
+	int i_min = 10e10;
+	int j_max = 0;
+	int j_min = 10e10;
+
+	for (i = 1; i < y_max + 1; i++)
+		for (j = 1; j < x_max + 1; j++)
+		{
+			int cx = j - 1;
+			int cy = i - 1;
+			int pixel_val = Hough_C.at<uchar>(cy, cx);
+
+			if (pixel_val < maxima)
+				Hough_C.at<uchar>(cy, cx) = 0;
+
+			else if ((pixel_val == maxima) && (cx > r_max && cy > r_max))
+			{
+				if (cx > j_max)	j_max = cx - r_max;
+				if (cx < j_min)	j_min = cx - r_max;
+
+				if (cy > i_max)	i_max = cy - r_max;
+				if (cy < i_min)	i_min = cy - r_max;
+			}
+			/*
+			else if ((pixel_val == maxima) && (cx > r_max && cy > r_max))
+			{
+				center_X = (int)(cx - r_max + 0.5);
+				center_Y = (int)(cy - r_max + 0.5);
+			}
+			*/
+		}
+	cout << (int)(j_max + j_min + 0.5) / 2 << "			" << (int)(i_max + i_min + 0.5) / 2 << endl;
+	center_X = (int)(j_max + j_min + 0.5) / 2;
+	center_Y = (int)(i_max + i_min + 0.5) / 2;
+
+	Reducing_C(5);
+	
+	/*
+	cout << "Detected Radius : " << r_start << endl;
+	cout << "Detected Center of circle : (" << center_X << ", " << center_Y << ")" << endl;
+	*/
+	imwrite("Hough Circle Optimized.jpg", Hough_C);
+	imshow("Hough Circle Optimized", Hough_C);
+	/*
+	// 테두리 그리기
+	for (int m = 0; m < Theta; m++)
+	{
+		int y = (int)(center_Y - r_start*LUT_cosC[m] + 0.5);
+		int x = (int)(center_X - r_start*LUT_sinC[m] + 0.5);
+		if ((x >= 0) && (y >= 0))
+			for (fi = 0; fi < 3; fi++)
+				for (fj = 0; fj < 3; fj++)
+					image_C.at<uchar>(y + fi, x + fj) = 190;
+	}
+	// 중심그리기
+	for (fi = 0; fi < 5; fi++)
+		for (fj = 0; fj < 5; fj++)
+			image_C.at<uchar>(center_Y + fi, center_X + fj) = 255;
+
+	imwrite("Result_Circle.jpg", image_C);
+	imshow("Result_Circle", image_C);
+	*/
+	number_of_C++;
+}
+
 void HoughT(Mat image, Mat tmp, int opt)		// Original image, Deformed image, option
 {
-	// Circle's Original image
-	Mat image_C(iheight, iwidth, CV_8UC1);
-	for (i = 0; i < iheight; i++)
-		for (j = 0; j < iwidth; j++)
-			image_C.at<uchar>(i, j) = image.at<uchar>(i, j);
 	
 	// initiating Hough Space		
 	for (i = 0; i < Rho_Max; i++)
 		for (j = 0; j < Theta; j++)
 			Hough_S.at<uchar>(i, j) = 0;
+
+	// Circle's Original image
+	for (i = 0; i < iheight; i++)
+		for (j = 0; j < iwidth; j++)
+			image_C.at<uchar>(i, j) = image.at<uchar>(i, j);
 
 	// Look Up Table 
 	LUT_angle();
@@ -531,105 +728,92 @@ void HoughT(Mat image, Mat tmp, int opt)		// Original image, Deformed image, opt
 		if (opt == TRUE)
 			Hough_S.at<uchar>(Rho_Max / 2, m) = (int)(Hough_S.at<uchar>(Rho_Max / 2, m) / 2.0 + 0.5);
 	}
+	imwrite("Hough_Space.jpg", Hough_S);
+	imshow("Hough Space Optimized", Hough_S);
 	
 	// -> Circle
-	int r_start = 5;
+	int r_start = 73;		// 처음 원의 지름 지정
 	int end_flag = FALSE;
-	int center_X = 0;
-	int center_Y = 0;
 
-	while (1)
-	{		
-		for (i = 0; i < y_max; i++)
-			for (j = 0; j < x_max; j++)
-				Hough_C.at<uchar>(i, j) = 0;
+	int index_Center = 0;
+	int index_R = 0;
 
-		int x0_min = 10e10;
-		int x0_max = 0;
-		int y0_min = 10e10;
-		int y0_max = 0;
+	while (!end_flag)
+	{
+		find_circle(r_start, opt, tmp);
 
-		r_start++;
+		Detected_Center[index_Center][0] = center_X;
+		Detected_Center[index_Center][1] = center_Y;
+		Detected_Radius[index_R] = r_start;
+		index_Center++;
+		index_R++;
+		// 다음 원의 지름 지정
+		r_start = 87;
 
-		for (k = r_start; k < r_start + GAP; k++)
+		if (number_of_C == 2)
+			end_flag = TRUE;
+	}
+	/*
+	while (!end_flag)
+	{
+		int Max_point = 0;
+		Max_point = find_circle(r_start, Max_point, opt, image, tmp);
+		//if (Max_point != 1)
+			r_start==87;
+		//else if (Max_point == 1)
 		{
-			for (i = 0; i < iheight; i++)
-			{
-				for (j = 0; j < iwidth; j++)
-				{
-					if (tmp.at<uchar>(i, j) > 0)
-					{
-						for (int m = 0; m < Theta; m++)
-						{
-							int x0 = (int)(j - k*LUT_cosC[m] + (r_max) + 0.5);
-							int y0 = (int)(i - k*LUT_sinC[m] + (r_max) + 0.5);
-							if ((x0 >= 5 && x0 <= x_max) && (y0 >= 5 && y0 <= y_max))
-							{
-								// 겹치는 부분 누적하는 부분 ㅇㅈ?ㅇㅇㅈ~
-								hough_cntC[y0][x0][k]++;
-								// Hough Space
-								if (opt == TRUE)
-									Hough_C.at<uchar>(y0, x0)++;
-								else
-									Hough_C.at<uchar>(y0, x0) = 255;
-							}
-							
-						}
-					}
-				}
-			}
+			Detected_Center[index_Center][0] = center_X;
+			Detected_Center[index_Center][1] = center_Y;
+			Detected_Radius[index_R] = r_start;
+			index_Center++;
+			index_R++;
 		}
 
-		for (i = 0; i < y_max; i++)
-			for (j = 0; j < x_max; j++)
-			{
-				if (Hough_C.at<uchar>(i, j) > 40)
-				{
-					if (x0_min > j)	x0_min = j;
-					if (x0_max < j)	x0_max = j;
-					if (y0_min > i)	y0_min = i;
-					if (y0_max < i)	y0_max = i;
-				}
-			}
-		
-		
-		//cout << r_start << "		" << x0_max - x0_min << "		" << y0_max - y0_min << 10 << endl;
-		if (((x0_max - x0_min) < 23) || ((y0_max - y0_min) < 23))
-		{
-			center_X = (int)((x0_max + x0_min) / 2.0 - r_max + 0.5);
-			center_Y = (int)((y0_max + y0_min) / 2.0 - r_max + 0.5);
-			break;
-		}
+		if (number_of_C == 2)
+			end_flag = TRUE;
+	}
+	*/
+	int big = 0;
+	if (Detected_Radius[0] > Detected_Radius[1])	big = Detected_Radius[0];
+	else	big = Detected_Radius[1];
+
+	if ((abs(Detected_Center[0][0] - Detected_Center[1][0]) < big) && (abs(Detected_Center[0][1] - Detected_Center[1][1]) < big))
+	{
+		number_of_C = 1;
+		Detected_Center[0][0] = Detected_Center[1][0];
+		Detected_Center[0][1] = Detected_Center[1][1];
+		Detected_Radius[0] = big;
+		Detected_Radius[1] = big;
+	}
+	cout << "Detected Radius A : " << Detected_Radius[0] << endl;
+	cout << "Detected Radius B : " << Detected_Radius[1] << endl;
+	cout << "Detected Center of circle A : (" << Detected_Center[0][0] << ", " << Detected_Center[0][1] << ")" << endl;
+	cout << "Detected Center of circle B : (" << Detected_Center[1][0] << ", " << Detected_Center[1][1] << ")" << endl;
+	cout << "Number of Circles : " << number_of_C << endl;
 			
-		
+	// 테두리 그리기
+	for (int C = 0; C < 2; C++)
+	{
+		center_X = Detected_Center[C][0];
+		center_Y = Detected_Center[C][1];
+		for (int m = 0; m < Theta; m++)
+		{
+			int y = (int)(center_Y - Detected_Radius[C] *LUT_cosC[m] + 0.5);
+			int x = (int)(center_X - Detected_Radius[C] *LUT_sinC[m] + 0.5);
+			if ((x >= 0) && (y >= 0))
+				for (fi = 0; fi < 3; fi++)
+					for (fj = 0; fj < 3; fj++)
+						image_C.at<uchar>(y + fi, x + fj) = 190;
+		}
+		// 중심그리기
+		for (fi = 0; fi < 5; fi++)
+			for (fj = 0; fj < 5; fj++)
+				image_C.at<uchar>(center_Y + fi, center_X + fj) = 255;
 	}
 	
-	cout <<"Detected Radius : "<< r_start << endl;
-	cout << "Detected Center of circle : (" << center_X << ", " << center_Y << ")" << endl;
-
-	imwrite("Hough_Space.jpg", Hough_S);
-	imwrite("Hough_Circle.jpg", Hough_C);
-
-	imshow("Hough Space", Hough_S);
-	imshow("Hough Circle", Hough_C);
-
-	for (int m = 0; m < Theta; m++)
-	{
-		int x = (int)(center_Y - r_start*LUT_cosC[m] + 0.5);
-		int y = (int)(center_X - r_start*LUT_sinC[m] + 0.5);
-		if ((x >= 0) && (y >= 0))
-			for (fi = 0; fi < 3; fi++)
-				for (fj = 0; fj < 3; fj++)
-					image_C.at<uchar>(y + fi, x + fj) = 190;
-	}
-	for (fi = 0; fi < 5; fi++)
-		for (fj = 0; fj < 5; fj++)
-			image_C.at<uchar>(center_Y + fi, center_X + fj) = 255;
-
 	imwrite("Result_Circle.jpg", image_C);
 	imshow("Result_Circle", image_C);
-	
-			
+
 	// 선의 임계값설정 & 개수
 	for (i = 1; i < Rho_Max + 1; i++)
 		for (j = 1; j < Theta + 1; j++)
@@ -748,7 +932,7 @@ void HoughT(Mat image, Mat tmp, int opt)		// Original image, Deformed image, opt
 void main()
 {
 	// Origianl image (Gray)
-	Mat image = imread("coin.jpg", 0);
+	Mat image = imread("coin2.jpg", 0);
 	imshow("Original Image", image);
 
 	for (i = 0; i < iheight; i++)
